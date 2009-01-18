@@ -95,7 +95,7 @@ void status_display_end()
 		free(line->title);
 	free(lines);
 	free(status_buffer);
-	line = NULL;
+	lines = NULL;
 }
 
 
