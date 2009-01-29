@@ -18,7 +18,6 @@ typedef struct status_line {
 
 static status_line* lines;
 static int num_lines, allocated_lines;
-static int cur_line;
 static int max_title_length;
 static int num_columns;
 static char* status_buffer;
@@ -28,14 +27,21 @@ enum {
 	divider_width = 2
 };
 
+// Debugging.
+#ifdef DEBUG_STATUS_DISPLAY
+	#define DebugPoint() { fflush(stdout); usleep(1500000); }
+#else
+	#define DebugPoint()
+#endif
+
 
 static void redraw_all()
 {
 	//*** Will not redraw the values, as we don't store those.
 
 	// Go to the first line.
-	if (cur_line > 0)
-		printf("\e[%dA", cur_line);
+	if (num_lines > 0)
+		printf("\e[%dA", num_lines);
 
 	// Clear everything.
 	printf("\e[J");
@@ -49,14 +55,6 @@ static void redraw_all()
 			printf(":");
 		printf("\n");
 		}
-
-	// Put the cursor on the last line.
-	if (num_lines > 0) {
-		printf("\e[A");
-		cur_line = num_lines - 1;
-		}
-	else
-		cur_line = 0;
 }
 
 
@@ -69,7 +67,6 @@ void status_display_start()
 	num_lines = 0;
 	allocated_lines = 8;
 	lines = calloc(allocated_lines, sizeof(status_line));
-	cur_line = 0;
 	max_title_length = 0;
 
 	// Figure out how many columns we have.
@@ -85,9 +82,6 @@ void status_display_end()
 {
 	if (!lines)
 		return;
-
-	// Send the cursor to the end.
-	printf("\e[%dB\n", num_lines - cur_line - 1);
 
 	status_line* stopper = &lines[num_lines];
 	status_line* line = lines;
@@ -121,23 +115,19 @@ static status_line* add_line(const char* title, int type)
 	int title_length = strlen(title);
 	if (title_length > max_title_length) {
 		max_title_length = title_length;
+		printf("\n"); 	// Go to the new "rest" position.
 		redraw_all();
 		}
 
 	// Otherwise, just draw the new line.
 	else {
-		// Go to the (previous) last line.
-		int old_last_line = line - lines - 1;
-		if (cur_line < old_last_line) {
-			printf("\e[%dE", old_last_line - cur_line);
-			cur_line = old_last_line;
-			}
-
 		// Draw the new line.
-		printf("\n%s", line->title);
+		printf("%s", line->title);
 		if (line->type == StatusLine)
 			printf(":");
-		cur_line = old_last_line + 1;
+
+		// Go to the new "rest" position.
+		printf("\n");
 		}
 
 	return line;
@@ -163,17 +153,17 @@ void set_status(const char* title, const char* value)
 
 	// Go to the line.
 	int line_number = line - lines;
-	if (cur_line > line_number)
-		printf("\e[%dA", cur_line - line_number);
-	else if (cur_line < line_number)
-		printf("\e[%dB", line_number - cur_line);
-	cur_line = line_number;
+	printf("\e[%dA", num_lines - line_number);
+	DebugPoint();
 	
 	// Print the status.
 	int value_column = max_title_length + 1 + divider_width + 1;
 	printf("\e[%dG\e[K", value_column);
+	DebugPoint();
 	int status_width = strlen(value);
 	int value_width = num_columns - value_column - 1;
+		// "- 1" because we're not sure what will happen when the cursor advances
+		// from the last column on the screen, so don't even try it.
 	if (status_width > value_width) {
 		// Need to ellipsize the value.  We do it at the front.
 		strcpy(status_buffer, "...");
@@ -182,6 +172,11 @@ void set_status(const char* title, const char* value)
 		}
 	else
 		printf("%s", value);
+
+	// Return to the "rest" position.
+	printf("\r\e[%dB", num_lines - line_number);
+	DebugPoint();
+
 	fflush(stdout);
 }
 
